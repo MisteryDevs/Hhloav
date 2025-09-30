@@ -23,7 +23,7 @@ MONGO_URI = os.getenv(
     "mongodb+srv://Krishna:pss968048@cluster0.4rfuzro.mongodb.net/?retryWrites=true&w=majority"
 )
 
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6258915779"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "5738579437"))
 INITIAL_CREDITS = int(os.getenv("INITIAL_CREDITS", "5"))
 REFERRAL_BONUS = int(os.getenv("REFERRAL_BONUS", "10"))
 LOOKUP_COST = int(os.getenv("LOOKUP_COST", "1"))
