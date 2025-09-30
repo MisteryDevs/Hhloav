@@ -16,7 +16,7 @@ from pymongo import MongoClient
 # ---------------- CONFIG ----------------
 API_ID = int(os.getenv("API_ID", "14050586"))
 API_HASH = os.getenv("API_HASH", "42a60d9c657b106370c79bb0a8ac560c")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "6956731651:AAGOmhnJ29AvZUgVXrONh9bj3wfCRayv5xc")
 
 MONGO_URI = os.getenv(
     "MONGO_URI",
