@@ -1,4 +1,4 @@
-
+# main.py — Full ready-to-run bot (Pyrogram v2 + aiohttp health + MongoDB)
 import os
 import io
 import asyncio
@@ -16,7 +16,7 @@ from pymongo import MongoClient
 # ---------------- CONFIG ----------------
 API_ID = int(os.getenv("API_ID", "14050586"))
 API_HASH = os.getenv("API_HASH", "42a60d9c657b106370c79bb0a8ac560c")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "6956731651:AAESOyS-FwtDjl04BBM8hGU1QPZ1HSLd7E4")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 MONGO_URI = os.getenv(
     "MONGO_URI",
@@ -28,12 +28,12 @@ INITIAL_CREDITS = int(os.getenv("INITIAL_CREDITS", "5"))
 REFERRAL_BONUS = int(os.getenv("REFERRAL_BONUS", "10"))
 LOOKUP_COST = int(os.getenv("LOOKUP_COST", "1"))
 
-# Force join channels (defaults - replace with your channels or set env vars)
+# Force join channels (use usernames like @channelname or channel IDs)
 FORCE_JOIN1 = os.getenv("FORCE_JOIN1", "@Ur_rishu_143")
 FORCE_JOIN2 = os.getenv("FORCE_JOIN2", "@Vip_robotz")
 
 # ---------------- LOGGING ----------------
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 # ---------------- BOT SETUP ----------------
@@ -42,12 +42,12 @@ app = Client("mobile_info_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_
 # ---------------- DATABASE ----------------
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-    mongo_client.server_info()
+    mongo_client.server_info()  # will raise if cannot connect
     db = mongo_client.mobile_info_bot
     users_collection = db.users
     logger.info("✅ Connected to MongoDB")
 except Exception as e:
-    logger.exception(f"❌ MongoDB connection failed: {e}")
+    logger.exception("❌ MongoDB connection failed: %s", e)
     raise SystemExit(1)
 
 # in-memory user states for multi-step flows
@@ -195,7 +195,7 @@ async def is_member_of(chat_username: str, user_id: int, client: Client) -> bool
         return False
 
 # ---------------- COMMANDS ----------------
-@app.on_message(filters.command("start"))
+@app.on_message(filters.command("start") & filters.private)
 async def start_cmd(client: Client, message: Message):
     user = message.from_user
     referred_by = None
@@ -329,8 +329,10 @@ async def callback(client: Client, query: CallbackQuery):
             member2 = await is_member_of(FORCE_JOIN2, uid, client)
             if not (member1 and member2):
                 kb = [
-                    [InlineKeyboardButton(f"Join {FORCE_JOIN1}", url=f"https://t.me/{FORCE_JOIN1.lstrip('@')}"),
-                     InlineKeyboardButton(f"Join {FORCE_JOIN2}", url=f"https://t.me/{FORCE_JOIN2.lstrip('@')}")],
+                    [
+                        InlineKeyboardButton(f"Join {FORCE_JOIN1}", url=f"https://t.me/{FORCE_JOIN1.lstrip('@')}"),
+                        InlineKeyboardButton(f"Join {FORCE_JOIN2}", url=f"https://t.me/{FORCE_JOIN2.lstrip('@')}")
+                    ],
                     [InlineKeyboardButton("✅ I Joined", callback_data="check_join")],
                     [back_btn]
                 ]
@@ -438,6 +440,20 @@ async def callback(client: Client, query: CallbackQuery):
         except Exception:
             pass
 
+# ------------------ DEBUG / TEST HANDLERS ------------------
+@app.on_message(filters.command("ping") & filters.private)
+async def ping_handler(c, m: Message):
+    logger.info("Received /ping from %s (%s)", m.from_user.first_name, m.from_user.id)
+    await m.reply_text("PONG ✅")
+
+@app.on_message(filters.all)
+async def log_all_messages(c, m: Message):
+    try:
+        text = (m.text or m.caption or "")[:150]
+        logger.debug("Incoming message: chat=%s user=%s id=%s text=%s", m.chat.id, m.from_user and m.from_user.id, m.message_id, text)
+    except Exception:
+        logger.exception("Failed to log incoming message")
+
 # ---------------- Web server for Render (health & keepalive) ----------------
 async def handle_root(request):
     return web.Response(text="OK")
@@ -450,14 +466,15 @@ async def start_web_app():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logger.info(f"Web server started on port {port}")
+    logger.info("Web server started on port %s", port)
     return runner
 
 # ---------------- RUN BOT (async) ----------------
 async def main():
     # start pyrogram client
     await app.start()
-    logger.info("Pyrogram client started")
+    me = await app.get_me()
+    logger.info("Pyrogram client started as @%s (id=%s)", me.username, me.id)
 
     # start web server
     runner = await start_web_app()
@@ -466,12 +483,10 @@ async def main():
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
-    # register signal handlers (works on Unix hosts like Render)
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, stop_event.set)
         except NotImplementedError:
-            # some platforms don't support loop.add_signal_handler
             pass
 
     logger.info("Bot is up — waiting for stop signal (SIGINT / SIGTERM).")
