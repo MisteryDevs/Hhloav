@@ -1,5 +1,5 @@
-pyrogram
+pyrogram==2.0.106
 aiohttp
 pymongo
 dnspython
-tgcrypto  # strongly recommended for Pyrogram speed
+tgcrypto
