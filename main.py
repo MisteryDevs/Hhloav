@@ -1,7 +1,9 @@
+
 import os
 import io
 import asyncio
 import logging
+import signal
 from urllib.parse import quote_plus
 
 import aiohttp
@@ -11,12 +13,15 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.errors import UserNotParticipant, RPCError
 from pymongo import MongoClient
 
-# ---------------- CONFIG ---------------- #
+# ---------------- CONFIG ----------------
 API_ID = int(os.getenv("API_ID", "14050586"))
 API_HASH = os.getenv("API_HASH", "42a60d9c657b106370c79bb0a8ac560c")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "6956731651:AAESOyS-FwtDjl04BBM8hGU1QPZ1HSLd7E4")
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Krishna:pss968048@cluster0.4rfuzro.mongodb.net/?retryWrites=true&w=majority")
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    "mongodb+srv://Krishna:pss968048@cluster0.4rfuzro.mongodb.net/?retryWrites=true&w=majority"
+)
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "6258915779"))
 INITIAL_CREDITS = int(os.getenv("INITIAL_CREDITS", "5"))
@@ -27,14 +32,14 @@ LOOKUP_COST = int(os.getenv("LOOKUP_COST", "1"))
 FORCE_JOIN1 = os.getenv("FORCE_JOIN1", "@Ur_rishu_143")
 FORCE_JOIN2 = os.getenv("FORCE_JOIN2", "@Vip_robotz")
 
-# ---------------- LOGGING ---------------- #
+# ---------------- LOGGING ----------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------------- BOT SETUP ---------------- #
+# ---------------- BOT SETUP ----------------
 app = Client("mobile_info_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ---------------- DATABASE ---------------- #
+# ---------------- DATABASE ----------------
 try:
     mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     mongo_client.server_info()
@@ -48,8 +53,9 @@ except Exception as e:
 # in-memory user states for multi-step flows
 user_states = {}
 
-# ---------------- HELPERS ---------------- #
+# ---------------- HELPERS ----------------
 def add_user(user_id: int, first_name: str, referred_by: int = None):
+    """Create user if not exists and credit referrer if provided."""
     if users_collection.find_one({"user_id": user_id}):
         return
     users_collection.insert_one({
@@ -81,7 +87,7 @@ def use_credit(user_id: int):
         users_collection.update_one({"user_id": user_id},
                                     {"$inc": {"credits": -LOOKUP_COST, "lookups_done": 1}})
 
-# ---------------- API (INTEGRATED) ---------------- #
+# ---------------- API (INTEGRATED) ----------------
 async def fetch_mobile_info(number: str, credits_left):
     """
     Async fetch using aiohttp. Returns a formatted markdown string.
@@ -94,7 +100,7 @@ async def fetch_mobile_info(number: str, credits_left):
                 if resp.status != 200:
                     logger.warning("API returned non-200: %s", resp.status)
                     return "⚠️ Could not fetch info right now."
-                data = await resp.json(content_type=None)  # more forgiving
+                data = await resp.json(content_type=None)  # forgiving
 
         data_list = data.get("List", {}).get("HiTeckGroop.in", {}).get("Data", [])
         if not data_list:
@@ -142,15 +148,13 @@ async def fetch_mobile_info(number: str, credits_left):
         logger.exception("API Error: %s", e)
         return "⚠️ Could not fetch info right now."
 
-# ---------------- MENU ---------------- #
+# ---------------- MENU ----------------
 async def send_main_menu(message_or_query):
     """
     Accepts Message or CallbackQuery and displays the main menu.
     """
-    # determine user object
     user = getattr(message_or_query, "from_user", None)
     if user is None:
-        # fallback in rare cases
         logger.warning("send_main_menu called without from_user")
         return
 
@@ -169,31 +173,28 @@ async def send_main_menu(message_or_query):
     if isinstance(message_or_query, Message):
         await message_or_query.reply_text(text, reply_markup=markup, parse_mode="Markdown")
     else:
-        # CallbackQuery -> edit the same message
         try:
             await message_or_query.message.edit_text(text, reply_markup=markup, parse_mode="Markdown")
         except Exception as e:
             logger.exception("Failed to edit message for menu: %s", e)
 
-# ---------------- UTILS: force join check ---------------- #
-async def is_member_of(chat_username: str, user_id: int, client: Client):
+# ---------------- UTILS: force join check ----------------
+async def is_member_of(chat_username: str, user_id: int, client: Client) -> bool:
     """
     Returns True if user_id is a member of chat_username. Otherwise False.
     """
     try:
-        # chat_username can be like "@channelname" or channel id
         await client.get_chat_member(chat_username, user_id)
         return True
     except UserNotParticipant:
         return False
     except RPCError:
-        # could be private channel, or bot not admin etc. treat as not a member
         return False
     except Exception as e:
         logger.exception("is_member_of error: %s", e)
         return False
 
-# ---------------- COMMANDS ---------------- #
+# ---------------- COMMANDS ----------------
 @app.on_message(filters.command("start"))
 async def start_cmd(client: Client, message: Message):
     user = message.from_user
@@ -311,7 +312,7 @@ async def handle_text(client: Client, message: Message):
                     continue
             return await message.reply_text(f"📢 Broadcast sent to {sent} users.")
 
-# ---------------- CALLBACKS ---------------- #
+# ---------------- CALLBACKS ----------------
 @app.on_callback_query()
 async def callback(client: Client, query: CallbackQuery):
     uid = query.from_user.id
@@ -324,11 +325,9 @@ async def callback(client: Client, query: CallbackQuery):
     try:
         # --- lookup: first enforce force-join ---
         if query.data == "lookup":
-            # check both channels
             member1 = await is_member_of(FORCE_JOIN1, uid, client)
             member2 = await is_member_of(FORCE_JOIN2, uid, client)
             if not (member1 and member2):
-                # ask user to join both channels
                 kb = [
                     [InlineKeyboardButton(f"Join {FORCE_JOIN1}", url=f"https://t.me/{FORCE_JOIN1.lstrip('@')}"),
                      InlineKeyboardButton(f"Join {FORCE_JOIN2}", url=f"https://t.me/{FORCE_JOIN2.lstrip('@')}")],
@@ -344,13 +343,11 @@ async def callback(client: Client, query: CallbackQuery):
                 await query.answer()
                 return
 
-            # if already a member of both, proceed to ask number
             await query.message.edit_text("📲 Send a mobile number to lookup:", reply_markup=InlineKeyboardMarkup([[back_btn]]))
             user_states[uid] = "awaiting_number"
             await query.answer()
             return
 
-        # --- re-check join after user presses "I Joined" ---
         elif query.data == "check_join":
             member1 = await is_member_of(FORCE_JOIN1, uid, client)
             member2 = await is_member_of(FORCE_JOIN2, uid, client)
@@ -358,15 +355,12 @@ async def callback(client: Client, query: CallbackQuery):
                 await query.message.edit_text("✅ Thanks — you joined both channels.\n\nNow send the mobile number to lookup:", reply_markup=InlineKeyboardMarkup([[back_btn]]))
                 user_states[uid] = "awaiting_number"
             else:
-                # show which channels are missing
                 missing = []
                 if not member1:
                     missing.append(FORCE_JOIN1)
                 if not member2:
                     missing.append(FORCE_JOIN2)
-                kb = [
-                    [InlineKeyboardButton(f"Join {m.lstrip('@')}", url=f"https://t.me/{m.lstrip('@')}")] for m in missing
-                ]
+                kb = [[InlineKeyboardButton(f"Join {m.lstrip('@')}", url=f"https://t.me/{m.lstrip('@')}")] for m in missing]
                 kb.append([InlineKeyboardButton("✅ I Joined", callback_data="check_join")])
                 kb.append([back_btn])
                 await query.message.edit_text(
@@ -444,7 +438,7 @@ async def callback(client: Client, query: CallbackQuery):
         except Exception:
             pass
 
-# ---------------- Web server for Render (health & keepalive) ---------------- #
+# ---------------- Web server for Render (health & keepalive) ----------------
 async def handle_root(request):
     return web.Response(text="OK")
 
@@ -459,19 +453,40 @@ async def start_web_app():
     logger.info(f"Web server started on port {port}")
     return runner
 
-# ---------------- RUN BOT (async) ---------------- #
+# ---------------- RUN BOT (async) ----------------
 async def main():
     # start pyrogram client
     await app.start()
     logger.info("Pyrogram client started")
+
     # start web server
     runner = await start_web_app()
-    # keep bot running until stopped
+
+    # graceful shutdown: use an event and signal handlers
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    # register signal handlers (works on Unix hosts like Render)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except NotImplementedError:
+            # some platforms don't support loop.add_signal_handler
+            pass
+
+    logger.info("Bot is up — waiting for stop signal (SIGINT / SIGTERM).")
     try:
-        await app.idle()
+        await stop_event.wait()
     finally:
-        await app.stop()
-        await runner.cleanup()
+        logger.info("Shutting down...")
+        try:
+            await app.stop()
+        except Exception as e:
+            logger.exception("Error stopping pyrogram client: %s", e)
+        try:
+            await runner.cleanup()
+        except Exception as e:
+            logger.exception("Error cleaning up web runner: %s", e)
         logger.info("Clean shutdown complete")
 
 if __name__ == "__main__":
